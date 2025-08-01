@@ -1,0 +1,174 @@
+import { useState } from 'react';
+import { createRoot } from 'react-dom/client';
+
+// Main App component
+const App = () => {
+  const [vin, setVin] = useState('');
+  const [vehicleData, setVehicleData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Function to handle the API call to decode the VIN
+  const decodeVin = async () => {
+    // Clear previous results and errors, show loading state
+    setVehicleData(null);
+    setError(null);
+    setLoading(true);
+
+    try {
+      // The NHTSA vPIC API endpoint for VIN decoding
+      const apiUrl = `https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${vin}?format=json`;
+      
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Check for errors in the API response itself
+      if (data.Results.some(result => result.ErrorCode !== '0')) {
+        setError('Invalid VIN or no data found.');
+        setVehicleData(null);
+      } else {
+        // Filter and clean up the useful data from the API response
+        const filteredData = data.Results.filter(
+          item => item.Value && item.Value !== 'Not Applicable' && item.Value !== ''
+        );
+        setVehicleData(filteredData);
+      }
+      
+    } catch (e) {
+      console.error('Error decoding VIN:', e);
+      setError('Failed to fetch data. Please check the VIN and your network connection.');
+      setVehicleData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (vin.length === 17) {
+      decodeVin();
+    } else {
+      setError('Please enter a valid 17-character VIN.');
+    }
+  };
+  
+  // Renders a message box for errors or status updates.
+  const MessageBox = ({ type, message }) => {
+    if (!message) return null;
+  
+    let borderColor, bgColor, textColor, title;
+    
+    switch (type) {
+      case 'error':
+        borderColor = 'border-red-500';
+        bgColor = 'bg-red-100';
+        textColor = 'text-red-800';
+        title = 'Error';
+        break;
+      case 'info':
+        borderColor = 'border-blue-500';
+        bgColor = 'bg-blue-100';
+        textColor = 'text-blue-800';
+        title = 'Info';
+        break;
+      default:
+        borderColor = 'border-gray-500';
+        bgColor = 'bg-gray-100';
+        textColor = 'text-gray-800';
+        title = 'Message';
+    }
+  
+    return (
+      <div className={`p-4 mt-4 border-l-4 ${borderColor} rounded-md ${bgColor}`}>
+        <div className="flex">
+          <div className="ml-3">
+            <h3 className={`text-sm font-medium ${textColor}`}>{title}</h3>
+            <div className={`mt-2 text-sm ${textColor}`}>
+              <p>{message}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
+
+  return (
+    <div className="flex flex-col items-center min-h-screen bg-gray-100 p-4">
+      {/* Header */}
+      <header className="w-full max-w-2xl text-center py-8">
+        <h1 className="text-4xl font-extrabold text-gray-800 mb-2 font-inter">
+          VIN Decoder
+        </h1>
+        <p className="text-xl text-gray-600 font-inter">
+          Powered by the NHTSA vPIC API
+        </p>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="w-full max-w-2xl bg-white p-6 md:p-8 rounded-xl shadow-2xl transition-all duration-300 transform hover:scale-105">
+        
+        {/* VIN Input Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4 mb-8">
+          <input
+            type="text"
+            value={vin}
+            onChange={(e) => setVin(e.target.value.toUpperCase())}
+            placeholder="Enter 17-character VIN"
+            maxLength="17"
+            className="flex-grow p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors duration-200 text-gray-700 font-mono"
+          />
+          <button
+            type="submit"
+            disabled={loading || vin.length !== 17}
+            className="bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed transform active:scale-95"
+          >
+            {loading ? 'Decoding...' : 'Decode VIN'}
+          </button>
+        </form>
+
+        {/* Display area for results and messages */}
+        {error && <MessageBox type="error" message={error} />}
+        
+        {loading && !error && (
+          <div className="flex items-center justify-center p-6">
+            <div className="w-12 h-12 border-4 border-blue-500 border-dashed rounded-full animate-spin"></div>
+            <span className="ml-4 text-gray-600">Loading vehicle data...</span>
+          </div>
+        )}
+
+        {vehicleData && vehicleData.length > 0 && (
+          <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 font-inter">Vehicle Details</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {vehicleData.map((item, index) => (
+                <div key={index} className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                  <p className="text-sm font-semibold text-gray-500 truncate">{item.Variable}</p>
+                  <p className="text-lg font-mono text-gray-900 mt-1">{item.Value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="w-full max-w-2xl text-center py-6 mt-8 border-t border-gray-300">
+        <p className="text-sm text-gray-500">
+          This data is provided by the National Highway Traffic Safety Administration (NHTSA) vPIC API.
+        </p>
+      </footer>
+    </div>
+  );
+};
+
+// Root element setup
+const container = document.getElementById('root');
+const root = createRoot(container);
+root.render(<App />);
+
